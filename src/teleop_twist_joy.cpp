@@ -43,6 +43,7 @@ struct TeleopTwistJoy::Impl
 {
   void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
   void sendCmdVelMsg(const sensor_msgs::Joy::ConstPtr& joy_msg, const std::string& which_map);
+  void adjustVelocity(const sensor_msgs::Joy::ConstPtr& joy_msg);
 
   ros::Subscriber joy_sub;
   ros::Publisher cmd_vel_pub;
@@ -50,8 +51,25 @@ struct TeleopTwistJoy::Impl
   int enable_button;
   int enable_turbo_button;
 
+  int increase_velocity_input;
+  int decrease_velocity_input;
+  int reset_velocity_input;
+
+  std::string increase_velocity_input_type;
+  std::string decrease_velocity_input_type;
+  std::string reset_velocity_input_type;
+
+  std::string increase_velocity_direction;
+  std::string decrease_velocity_direction;
+  std::string reset_velocity_direction;
+
+  double velocity_multiplier;
+  const double velocity_multiplier_step = 0.1;
+
   std::map<std::string, int> axis_linear_map;
   std::map< std::string, std::map<std::string, double> > scale_linear_map;
+  std::map<std::string, double> base_scale_linear_map;
+  std::map<std::string, double> base_scale_angular_map;
 
   std::map<std::string, int> axis_angular_map;
   std::map< std::string, std::map<std::string, double> > scale_angular_map;
@@ -73,6 +91,18 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
 
   nh_param->param<int>("enable_button", pimpl_->enable_button, 0);
   nh_param->param<int>("enable_turbo_button", pimpl_->enable_turbo_button, -1);
+
+  nh_param->param<int>("increase_velocity_input", pimpl_->increase_velocity_input, -1);
+  nh_param->param<int>("decrease_velocity_input", pimpl_->decrease_velocity_input, -1);
+  nh_param->param<int>("reset_velocity_input", pimpl_->reset_velocity_input, -1);
+
+  nh_param->param<std::string>("increase_velocity_input_type", pimpl_->increase_velocity_input_type, "axis");
+  nh_param->param<std::string>("decrease_velocity_input_type", pimpl_->decrease_velocity_input_type, "axis");
+  nh_param->param<std::string>("reset_velocity_input_type", pimpl_->reset_velocity_input_type, "axis");
+
+  nh_param->param<std::string>("increase_velocity_direction", pimpl_->increase_velocity_direction, "positive");
+  nh_param->param<std::string>("decrease_velocity_direction", pimpl_->decrease_velocity_direction, "negative");
+  nh_param->param<std::string>("reset_velocity_direction", pimpl_->reset_velocity_direction, "both");
 
   if (nh_param->getParam("axis_linear", pimpl_->axis_linear_map))
   {
@@ -98,6 +128,10 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
     nh_param->param<double>("scale_angular_turbo",
         pimpl_->scale_angular_map["turbo"]["yaw"], pimpl_->scale_angular_map["normal"]["yaw"]);
   }
+
+  pimpl_->velocity_multiplier = 1.0;
+  pimpl_->base_scale_linear_map = pimpl_->scale_linear_map["normal"];
+  pimpl_->base_scale_angular_map = pimpl_->scale_angular_map["normal"];
 
   ROS_INFO_NAMED("TeleopTwistJoy", "Teleop enable button %i.", pimpl_->enable_button);
   ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy",
@@ -154,16 +188,92 @@ void TeleopTwistJoy::Impl::sendCmdVelMsg(const sensor_msgs::Joy::ConstPtr& joy_m
   sent_disable_msg = false;
 }
 
+void TeleopTwistJoy::Impl::adjustVelocity(const sensor_msgs::Joy::ConstPtr& joy_msg)
+{
+  const double axis_threshold = 0.5;  // Threshold for detecting axis movement
+
+  // Handle Increase Velocity
+  if (increase_velocity_input_type == "axis")
+  {
+    if (increase_velocity_input >= 0 && joy_msg->axes.size() > increase_velocity_input)
+    {
+      double axis_value = joy_msg->axes[increase_velocity_input];
+      if ((increase_velocity_direction == "positive" && axis_value > axis_threshold) ||
+          (increase_velocity_direction == "negative" && axis_value < -axis_threshold) ||
+          (increase_velocity_direction == "both" && (axis_value > axis_threshold || axis_value < -axis_threshold)))
+      {
+        velocity_multiplier += velocity_multiplier_step;
+        ROS_INFO("Increased velocity multiplier: %f", velocity_multiplier);
+      }
+    }
+  }
+  else if (increase_velocity_input_type == "button")
+  {
+    if (increase_velocity_input >= 0 && joy_msg->buttons.size() > increase_velocity_input && joy_msg->buttons[increase_velocity_input])
+    {
+      velocity_multiplier += velocity_multiplier_step;
+      ROS_INFO("Increased velocity multiplier: %f", velocity_multiplier);
+    }
+  }
+
+  // Handle Decrease Velocity
+  if (decrease_velocity_input_type == "axis")
+  {
+    if (decrease_velocity_input >= 0 && joy_msg->axes.size() > decrease_velocity_input)
+    {
+      double axis_value = joy_msg->axes[decrease_velocity_input];
+      if ((decrease_velocity_direction == "positive" && axis_value > axis_threshold) ||
+          (decrease_velocity_direction == "negative" && axis_value < -axis_threshold) ||
+          (decrease_velocity_direction == "both" && (axis_value > axis_threshold || axis_value < -axis_threshold)))
+      {
+        velocity_multiplier -= velocity_multiplier_step;
+        ROS_INFO("Decreased velocity multiplier: %f", velocity_multiplier);
+      }
+    }
+  }
+  else if (decrease_velocity_input_type == "button")
+  {
+    if (decrease_velocity_input >= 0 && joy_msg->buttons.size() > decrease_velocity_input && joy_msg->buttons[decrease_velocity_input])
+    {
+      velocity_multiplier -= velocity_multiplier_step;
+      ROS_INFO("Decreased velocity multiplier: %f", velocity_multiplier);
+    }
+  }
+
+  // Handle Reset Velocity
+  if (reset_velocity_input_type == "axis")
+  {
+    if (reset_velocity_input >= 0 && joy_msg->axes.size() > reset_velocity_input)
+    {
+      double axis_value = joy_msg->axes[reset_velocity_input];
+      if ((reset_velocity_direction == "positive" && axis_value > axis_threshold) ||
+          (reset_velocity_direction == "negative" && axis_value < -axis_threshold) ||
+          (reset_velocity_direction == "both" && (axis_value > axis_threshold || axis_value < -axis_threshold)))
+      {
+        velocity_multiplier = 1.0;
+        ROS_INFO("Reset velocity multiplier to: %f", velocity_multiplier);
+      }
+    }
+  }
+  else if (reset_velocity_input_type == "button")
+  {
+    if (reset_velocity_input >= 0 && joy_msg->buttons.size() > reset_velocity_input && joy_msg->buttons[reset_velocity_input])
+    {
+      velocity_multiplier = 1.0;
+      ROS_INFO("Reset velocity multiplier to: %f", velocity_multiplier);
+    }
+  }
+}
+
 void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg)
 {
-  if (enable_turbo_button >= 0 &&
-      joy_msg->buttons.size() > enable_turbo_button &&
-      joy_msg->buttons[enable_turbo_button])
+  adjustVelocity(joy_msg);  // Adjust velocity based on button input
+
+  if (enable_turbo_button >= 0 && joy_msg->buttons.size() > enable_turbo_button && joy_msg->buttons[enable_turbo_button])
   {
     sendCmdVelMsg(joy_msg, "turbo");
   }
-  else if (joy_msg->buttons.size() > enable_button &&
-           joy_msg->buttons[enable_button])
+  else if (joy_msg->buttons.size() > enable_button && joy_msg->buttons[enable_button])
   {
     sendCmdVelMsg(joy_msg, "normal");
   }
