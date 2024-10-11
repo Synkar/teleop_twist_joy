@@ -58,6 +58,7 @@ struct TeleopTwistJoy::Impl
   std::string increase_velocity_input_type;
   std::string decrease_velocity_input_type;
   std::string reset_velocity_input_type;
+  bool velocity_input_pressed;
 
   std::string increase_velocity_direction;
   std::string decrease_velocity_direction;
@@ -157,6 +158,7 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
   }
 
   pimpl_->sent_disable_msg = false;
+  pimpl_->velocity_input_pressed = false;
 }
 
 double getVal(const sensor_msgs::Joy::ConstPtr& joy_msg, const std::map<std::string, int>& axis_map,
@@ -193,6 +195,8 @@ void TeleopTwistJoy::Impl::adjustVelocity(const sensor_msgs::Joy::ConstPtr& joy_
 {
   const double axis_threshold = 0.5;  // Threshold for detecting axis movement
 
+  bool button_pressed = false; // Used to increasing too fast when button is kept pressed
+
   // Handle Increase Velocity
   if (increase_velocity_input_type == "axis")
   {
@@ -203,8 +207,12 @@ void TeleopTwistJoy::Impl::adjustVelocity(const sensor_msgs::Joy::ConstPtr& joy_
           (increase_velocity_direction == "negative" && axis_value < -axis_threshold) ||
           (increase_velocity_direction == "both" && (axis_value > axis_threshold || axis_value < -axis_threshold)))
       {
-        velocity_multiplier += velocity_multiplier_step;
-        ROS_INFO("Increased velocity multiplier: %f", velocity_multiplier);
+        button_pressed = true;
+        if(!velocity_input_pressed)
+        {
+          velocity_multiplier += velocity_multiplier_step;
+          ROS_INFO("Increased velocity multiplier: %f", velocity_multiplier);
+        }
       }
     }
   }
@@ -212,8 +220,12 @@ void TeleopTwistJoy::Impl::adjustVelocity(const sensor_msgs::Joy::ConstPtr& joy_
   {
     if (increase_velocity_input >= 0 && joy_msg->buttons.size() > increase_velocity_input && joy_msg->buttons[increase_velocity_input])
     {
-      velocity_multiplier += velocity_multiplier_step;
-      ROS_INFO("Increased velocity multiplier: %f", velocity_multiplier);
+      button_pressed = true;
+      if(!velocity_input_pressed)
+      {
+        velocity_multiplier += velocity_multiplier_step;
+        ROS_INFO("Increased velocity multiplier: %f", velocity_multiplier);
+      }
     }
   }
 
@@ -227,10 +239,14 @@ void TeleopTwistJoy::Impl::adjustVelocity(const sensor_msgs::Joy::ConstPtr& joy_
           (decrease_velocity_direction == "negative" && axis_value < -axis_threshold) ||
           (decrease_velocity_direction == "both" && (axis_value > axis_threshold || axis_value < -axis_threshold)))
       {
-        if (velocity_multiplier > velocity_multiplier_step)
+        button_pressed = true;
+        if(!velocity_input_pressed)
         {
-          velocity_multiplier -= velocity_multiplier_step;
-          ROS_INFO("Decreased velocity multiplier: %f", velocity_multiplier);
+          if (velocity_multiplier > velocity_multiplier_step)
+          {
+            velocity_multiplier -= velocity_multiplier_step;
+            ROS_INFO("Decreased velocity multiplier: %f", velocity_multiplier);
+          }
         }
       }
     }
@@ -239,10 +255,14 @@ void TeleopTwistJoy::Impl::adjustVelocity(const sensor_msgs::Joy::ConstPtr& joy_
   {
     if (decrease_velocity_input >= 0 && joy_msg->buttons.size() > decrease_velocity_input && joy_msg->buttons[decrease_velocity_input])
     {
-      if (velocity_multiplier > velocity_multiplier_step)
+      button_pressed = true;
+      if(!velocity_input_pressed)
       {
-        velocity_multiplier -= velocity_multiplier_step;
-        ROS_INFO("Decreased velocity multiplier: %f", velocity_multiplier);
+        if (velocity_multiplier > velocity_multiplier_step)
+        {
+          velocity_multiplier -= velocity_multiplier_step;
+          ROS_INFO("Decreased velocity multiplier: %f", velocity_multiplier);
+        }
       }
     }
   }
@@ -257,8 +277,12 @@ void TeleopTwistJoy::Impl::adjustVelocity(const sensor_msgs::Joy::ConstPtr& joy_
           (reset_velocity_direction == "negative" && axis_value < -axis_threshold) ||
           (reset_velocity_direction == "both" && (axis_value > axis_threshold || axis_value < -axis_threshold)))
       {
-        velocity_multiplier = 1.0;
-        ROS_INFO("Reset velocity multiplier to: %f", velocity_multiplier);
+        button_pressed = true;
+        if(!velocity_input_pressed)
+        {
+          velocity_multiplier = 1.0;
+          ROS_INFO("Reset velocity multiplier to: %f", velocity_multiplier);
+        }
       }
     }
   }
@@ -266,10 +290,16 @@ void TeleopTwistJoy::Impl::adjustVelocity(const sensor_msgs::Joy::ConstPtr& joy_
   {
     if (reset_velocity_input >= 0 && joy_msg->buttons.size() > reset_velocity_input && joy_msg->buttons[reset_velocity_input])
     {
-      velocity_multiplier = 1.0;
-      ROS_INFO("Reset velocity multiplier to: %f", velocity_multiplier);
+      button_pressed = true;
+      if(!velocity_input_pressed)
+      {
+        velocity_multiplier = 1.0;
+        ROS_INFO("Reset velocity multiplier to: %f", velocity_multiplier);
+      }
     }
   }
+
+  velocity_input_pressed = button_pressed;
 }
 
 void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg)
