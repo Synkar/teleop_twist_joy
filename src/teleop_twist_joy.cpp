@@ -84,6 +84,7 @@ struct TeleopTwistJoy::Impl
  */
 TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
 {
+  ROS_INFO_NAMED("TeleopTwistJoy", "TeleopTwistJoy started.");
   pimpl_ = new Impl;
 
   pimpl_->cmd_vel_pub = nh->advertise<geometry_msgs::Twist>("cmd_vel", 1, true);
@@ -177,12 +178,12 @@ void TeleopTwistJoy::Impl::sendCmdVelMsg(const sensor_msgs::Joy::ConstPtr& joy_m
   // Initializes with zeros by default.
   geometry_msgs::Twist cmd_vel_msg;
 
-  cmd_vel_msg.linear.x = getVal(joy_msg, axis_linear_map, scale_linear_map[which_map], "x");
-  cmd_vel_msg.linear.y = getVal(joy_msg, axis_linear_map, scale_linear_map[which_map], "y");
-  cmd_vel_msg.linear.z = getVal(joy_msg, axis_linear_map, scale_linear_map[which_map], "z");
-  cmd_vel_msg.angular.z = getVal(joy_msg, axis_angular_map, scale_angular_map[which_map], "yaw");
-  cmd_vel_msg.angular.y = getVal(joy_msg, axis_angular_map, scale_angular_map[which_map], "pitch");
-  cmd_vel_msg.angular.x = getVal(joy_msg, axis_angular_map, scale_angular_map[which_map], "roll");
+  cmd_vel_msg.linear.x = getVal(joy_msg, axis_linear_map, scale_linear_map[which_map], "x") * velocity_multiplier;
+  cmd_vel_msg.linear.y = getVal(joy_msg, axis_linear_map, scale_linear_map[which_map], "y") * velocity_multiplier;
+  cmd_vel_msg.linear.z = getVal(joy_msg, axis_linear_map, scale_linear_map[which_map], "z") * velocity_multiplier;
+  cmd_vel_msg.angular.z = getVal(joy_msg, axis_angular_map, scale_angular_map[which_map], "yaw") * velocity_multiplier;
+  cmd_vel_msg.angular.y = getVal(joy_msg, axis_angular_map, scale_angular_map[which_map], "pitch") * velocity_multiplier;
+  cmd_vel_msg.angular.x = getVal(joy_msg, axis_angular_map, scale_angular_map[which_map], "roll") * velocity_multiplier;
 
   cmd_vel_pub.publish(cmd_vel_msg);
   sent_disable_msg = false;
@@ -226,8 +227,11 @@ void TeleopTwistJoy::Impl::adjustVelocity(const sensor_msgs::Joy::ConstPtr& joy_
           (decrease_velocity_direction == "negative" && axis_value < -axis_threshold) ||
           (decrease_velocity_direction == "both" && (axis_value > axis_threshold || axis_value < -axis_threshold)))
       {
-        velocity_multiplier -= velocity_multiplier_step;
-        ROS_INFO("Decreased velocity multiplier: %f", velocity_multiplier);
+        if (velocity_multiplier > velocity_multiplier_step)
+        {
+          velocity_multiplier -= velocity_multiplier_step;
+          ROS_INFO("Decreased velocity multiplier: %f", velocity_multiplier);
+        }
       }
     }
   }
@@ -235,8 +239,11 @@ void TeleopTwistJoy::Impl::adjustVelocity(const sensor_msgs::Joy::ConstPtr& joy_
   {
     if (decrease_velocity_input >= 0 && joy_msg->buttons.size() > decrease_velocity_input && joy_msg->buttons[decrease_velocity_input])
     {
-      velocity_multiplier -= velocity_multiplier_step;
-      ROS_INFO("Decreased velocity multiplier: %f", velocity_multiplier);
+      if (velocity_multiplier > velocity_multiplier_step)
+      {
+        velocity_multiplier -= velocity_multiplier_step;
+        ROS_INFO("Decreased velocity multiplier: %f", velocity_multiplier);
+      }
     }
   }
 
