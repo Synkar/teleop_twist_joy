@@ -55,6 +55,8 @@ struct TeleopTwistJoy::Impl
   int decrease_velocity_input;
   int reset_velocity_input;
 
+  bool reset_velocity_on_disable;
+
   std::string increase_velocity_input_type;
   std::string decrease_velocity_input_type;
   std::string reset_velocity_input_type;
@@ -105,6 +107,8 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
   nh_param->param<std::string>("increase_velocity_direction", pimpl_->increase_velocity_direction, "positive");
   nh_param->param<std::string>("decrease_velocity_direction", pimpl_->decrease_velocity_direction, "negative");
   nh_param->param<std::string>("reset_velocity_direction", pimpl_->reset_velocity_direction, "both");
+
+  nh_param->param<bool>("reset_velocity_on_disable", pimpl_->reset_velocity_on_disable, false);
 
   if (nh_param->getParam("axis_linear", pimpl_->axis_linear_map))
   {
@@ -323,6 +327,13 @@ void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg
       // Initializes with zeros by default.
       geometry_msgs::Twist cmd_vel_msg;
       cmd_vel_pub.publish(cmd_vel_msg);
+
+      // Reset the velocity multiplier if the reset_velocity_on_disable flag is true
+      if (reset_velocity_on_disable)
+      {
+        velocity_multiplier = 1.0;  // Reset velocity multiplier to default
+      }
+
       sent_disable_msg = true;
     }
   }
