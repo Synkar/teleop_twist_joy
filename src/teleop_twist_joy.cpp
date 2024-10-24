@@ -331,7 +331,11 @@ void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg
       // Reset the velocity multiplier if the reset_velocity_on_disable flag is true
       if (reset_velocity_on_disable)
       {
-        velocity_multiplier = 1.0;  // Reset velocity multiplier to default
+        if(velocity_multiplier != 1.0)
+        {
+          velocity_multiplier = 1.0;  // Reset velocity multiplier to default
+          ROS_INFO("Velocity multiplier reset to: %f", velocity_multiplier);
+        }
       }
 
       sent_disable_msg = true;
