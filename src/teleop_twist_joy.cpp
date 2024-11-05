@@ -311,15 +311,12 @@ void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg
   if (joy_msg->buttons.size() > enable_button && joy_msg->buttons[enable_button])
   {
     adjustVelocity(joy_msg);  // Adjust velocity based on button input
-
-    if (enable_turbo_button >= 0 && joy_msg->buttons.size() > enable_turbo_button && joy_msg->buttons[enable_turbo_button])
-    {
-      sendCmdVelMsg(joy_msg, "turbo");
-    }
-    else
-    {
-      sendCmdVelMsg(joy_msg, "normal");
-    }
+    sendCmdVelMsg(joy_msg, "normal");
+  }
+  else if (enable_turbo_button >= 0 && joy_msg->buttons.size() > enable_turbo_button && joy_msg->buttons[enable_turbo_button])
+  {
+    adjustVelocity(joy_msg);  // Adjust velocity based on button input
+    sendCmdVelMsg(joy_msg, "turbo");
   }
   else
   {
